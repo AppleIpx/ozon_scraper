@@ -1,74 +1,44 @@
 import json
-import time
-import undetected_chromedriver as uc 
-from bs4 import BeautifulSoup
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC 
-from selenium.webdriver.support.ui import WebDriverWait
-from functions import page_down, collect_product_info
+import logging
+import ssl
+from pathlib import Path
+
+from utils.collect_product_data import collect_data
+from utils.load_in_excel import write_data_to_excel
+from utils.prepare_work import preparation_before_work
+from utils.scroll import page_down
+from utils.write_products_urls_in_file import write_products_urls
+
+ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
+logger = logging.getLogger(__name__)
 
 
-def get_products_links(item_name='наушники hyperx'):
-    driver = uc.Chrome()
-    driver.implicitly_wait(5)
-
-    driver.get(url='https://ozon.ru')
-    time.sleep(2)
-
-    find_input = driver.find_element(By.NAME, 'text')
-    find_input.clear()
-    find_input.send_keys(item_name)
-    time.sleep(2)
-
-    find_input.send_keys(Keys.ENTER)
-    time.sleep(2)
-
-    current_url = f'{driver.current_url}&sorting=rating'
-    driver.get(url=current_url)
-    time.sleep(2)
-
-    # page_down(driver=driver)
-    time.sleep(2)
-
+def main() -> None:
+    """Функция запуска программы."""
     try:
-        find_links = driver.find_elements(By.CLASS_NAME, 'tile-hover-target')
-        products_urls = list(set([f'{link.get_attribute("href")}' for link in find_links]))
+        logging.warning("[INFO] Сбор данных начался. Пожалуйста, ожидайте...")
+        driver = preparation_before_work(item_name="ВВГ-Пнг(А)-LS 3 x 1.5")
 
-        print('[+] Ссылки на товары собраны!')
-    except:
-        print('[!] Что-то сломалось при сборе ссылок на товары!')
+        products_urls_list = page_down(driver=driver, class_name="kj6_24")
+        write_products_urls(products_urls=products_urls_list)
+        path_urls_products = Path("products_urls_dict_small.json")
+        with path_urls_products.open("r", encoding="utf-8") as file:
+            products_urls = json.load(file)
+        collect_data(products_urls=products_urls, driver=driver)
 
-    products_urls_dict = {}
+        driver.close()
+        driver.quit()
 
-    for k, v in enumerate(products_urls):
-        products_urls_dict.update({k: v})
-
-    with open('products_urls_dict.json', 'w', encoding='utf-8') as file:
-        json.dump(products_urls_dict, file, indent=4, ensure_ascii=False)
-
-    time.sleep(2)
-
-    products_data = []
-
-    for url in products_urls:
-        data = collect_product_info(driver=driver, url=url)
-        print(f'[+] Собрал данные товара с id: {data.get("product_id")}')
-        time.sleep(2)
-        products_data.append(data)
-
-    with open('PRODUCTS_DATA.json', 'w', encoding='utf-8') as file:
-        json.dump(products_data, file, indent=4, ensure_ascii=False)
-
-    driver.close()
-    driver.quit()
+        path_data_products = Path("PRODUCTS_DATA.json")
+        with path_data_products.open("r", encoding="utf-8") as file:
+            products_data = json.load(file)
+        write_data_to_excel(products_data=products_data)
+    except Exception as e:
+        logging.error(e)
+        logging.error("При выполнении программы произошла ошибка")
+    else:
+        logging.warning("Работа выполнена успешно!")
 
 
-def main():
-    print('[INFO] Сбор данных начался. Пожалуйста ожидайте...')
-    get_products_links(item_name='наушники hyperx')
-    print('[INFO] Работа выполнена успешно!')
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
